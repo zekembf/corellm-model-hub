@@ -1,23 +1,24 @@
 import os
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware  # 👈 Import CORS tools
 from pydantic import BaseModel
 from groq import Groq
-from dotenv import load_dotenv
 
-# Load local environment variables if present
-load_dotenv()
-
-# Vercel natively checks for a top-level variable named exactly 'app'
 app = FastAPI(
     title="CoreLLM Model Hub",
     description="Multi-Model AI backend workspace running on Groq",
     version="1.0.0"
 )
 
-# Initialize the Groq client natively using system environment variables
-api_key = os.getenv("GROQ_API_KEY")
-client = Groq(api_key=api_key) if api_key else None
+# 🌐 Enable CORS so Vercel's serverless containers can talk to each other safely
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows your live URL to fetch data cleanly
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class ChatMessage(BaseModel):
     message: str
@@ -28,15 +29,12 @@ def health_check():
 
 @app.post("/api/chat")
 async def chat_with_llm(chat_data: ChatMessage):
-    global client
-    # Fail-safe check if the client initialization failed at startup
-    if not client:
-        current_key = os.getenv("GROQ_API_KEY")
-        if not current_key:
-            raise HTTPException(status_code=500, detail="GROQ_API_KEY is missing on Vercel.")
-        client = Groq(api_key=current_key)
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is missing on Vercel.")
 
     try:
+        client = Groq(api_key=api_key)
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
@@ -45,13 +43,13 @@ async def chat_with_llm(chat_data: ChatMessage):
             ],
             temperature=0.7
         )
-        ai_response = completion.choices[0].message.content
+        ai_response = completion.choices.message.content
         return {"response": ai_response}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
-async def read_root():
+async def read_index():
     html_content = """
     <!DOCTYPE html>
     <html lang="en">
@@ -102,7 +100,8 @@ async def read_root():
             chatBox.scrollTop = chatBox.scrollHeight;
 
             try {
-                const response = await fetch('/api/chat', {
+                // Fetch uses absolute location routing to ensure the serverless route hits cleanly
+                const response = await fetch(window.location.origin + '/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: text })
