@@ -191,11 +191,13 @@ async def read_index():
 
             try {
                 // Hit the local or production cloud endpoint cleanly relative to origin
-                const response = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text })
-                });
+                            //  The perfect format:
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_input: text }) // 👈 Change "message" to "user_input"
+            });
+
                 
                 const data = await response.json();
                 aiMessageEl.innerText = data.response || "Error fetching AI response.";
