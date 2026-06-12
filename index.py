@@ -1,9 +1,11 @@
 import os
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware  # 👈 Import CORS tools
 from pydantic import BaseModel
 from groq import Groq
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI(
     title="CoreLLM Model Hub",
@@ -11,14 +13,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# 🌐 Enable CORS so Vercel's serverless containers can talk to each other safely
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allows your live URL to fetch data cleanly
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+api_key = os.getenv("GROQ_API_KEY")
+client = Groq(api_key=api_key) if api_key else None
 
 class ChatMessage(BaseModel):
     message: str
@@ -27,14 +23,17 @@ class ChatMessage(BaseModel):
 def health_check():
     return {"status": "ok", "message": "CoreLLM Backend is active!"}
 
+# 🔄 Removed 'async' from this route handler to match Vercel's Python engine bounds
 @app.post("/api/chat")
-async def chat_with_llm(chat_data: ChatMessage):
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is missing on Vercel.")
+def chat_with_llm(chat_data: ChatMessage):
+    global client
+    if not client:
+        current_key = os.getenv("GROQ_API_KEY")
+        if not current_key:
+            raise HTTPException(status_code=500, detail="GROQ_API_KEY is missing on Vercel.")
+        client = Groq(api_key=current_key)
 
     try:
-        client = Groq(api_key=api_key)
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
@@ -48,8 +47,9 @@ async def chat_with_llm(chat_data: ChatMessage):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# 🔄 Removed 'async' here as well
 @app.get("/")
-async def read_index():
+def read_root():
     html_content = """
     <!DOCTYPE html>
     <html lang="en">
@@ -100,8 +100,7 @@ async def read_index():
             chatBox.scrollTop = chatBox.scrollHeight;
 
             try {
-                // Fetch uses absolute location routing to ensure the serverless route hits cleanly
-                const response = await fetch(window.location.origin + '/api/chat', {
+                const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: text })
