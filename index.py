@@ -45,9 +45,12 @@ async def chat_with_llm(user_input: ChatMessage):
 
 # 👈 Add these final lines at the absolute bottom of the file
 # Mount the public directory to serve your static assets (CSS, Icons, etc.)
+# 🔄 Update the final lines at the bottom of your file to use index.html cleanly:
 app.mount("/public", StaticFiles(directory="public"), name="public")
 
-# Serve your index.html file whenever someone goes to the homepage root URL
 @app.get("/")
 async def read_index():
-    return FileResponse("public/index.html")
+    # Vercel needs a relative path check to locate your template file safely in serverless environments
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    html_path = os.path.join(current_dir, "public", "index.html")
+    return FileResponse(html_path)
