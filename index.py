@@ -55,12 +55,11 @@ async def chat_with_llm(user_input: ChatMessage):
 
 # Safely mount static folder assets if visible inside server environment containers
 if os.path.exists("public"):
+    # Mount the public directory cleanly
     app.mount("/public", StaticFiles(directory="public"), name="public")
 
 @app.get("/")
 async def read_index():
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    html_path = os.path.join(current_dir, "public", "index.html")
-    if os.path.exists(html_path):
-        return FileResponse(html_path)
-    return {"message": "Backend operational! Frontend mapping failed."}
+    # A simple, bulletproof path rule for Vercel's main dashboard folder
+    return FileResponse("public/index.html")
+
