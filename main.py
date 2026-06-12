@@ -1,10 +1,57 @@
-from fastapi import FastAPI
+import os
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
+from groq import Groq
+from dotenv import load_dotenv
 
-app = FastAPI()
+# Load local environment variables if present
+load_dotenv()
+
+# Vercel natively checks for a top-level variable named exactly 'app'
+app = FastAPI(
+    title="CoreLLM Model Hub",
+    description="Multi-Model AI backend workspace running on Groq",
+    version="1.0.0"
+)
+
+# Initialize the Groq client natively using system environment variables
+api_key = os.getenv("GROQ_API_KEY")
+client = Groq(api_key=api_key) if api_key else None
+
+class ChatMessage(BaseModel):
+    message: str
+
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "message": "CoreLLM Backend is active!"}
+
+@app.post("/api/chat")
+async def chat_with_llm(chat_data: ChatMessage):
+    global client
+    # Fail-safe check if the client initialization failed at startup
+    if not client:
+        current_key = os.getenv("GROQ_API_KEY")
+        if not current_key:
+            raise HTTPException(status_code=500, detail="GROQ_API_KEY is missing on Vercel.")
+        client = Groq(api_key=current_key)
+
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": "You are CoreLLM, a brilliant AI workspace assistant."},
+                {"role": "user", "content": chat_data.message}
+            ],
+            temperature=0.7
+        )
+        ai_response = completion.choices[0].message.content
+        return {"response": ai_response}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
-async def read_index():
+async def read_root():
     html_content = """
     <!DOCTYPE html>
     <html lang="en">
@@ -30,7 +77,7 @@ async def read_index():
     </head>
     <body>
     <div class="chat-container">
-        <div class="chat-header><div class="status-dot"></div>CoreLLM Workspace (Llama 3 Active)</div>
+        <div class="chat-header"><div class="status-dot"></div>CoreLLM Workspace (Llama 3 Active)</div>
         <div class="chat-messages" id="chatBox"><div class="message ai-message">Hello! I am CoreLLM. Type a prompt below to chat with me.</div></div>
         <div class="chat-input-area">
             <input type="text" id="userInput" placeholder="Ask anything..." onkeypress="handleKeyPress(event)">
