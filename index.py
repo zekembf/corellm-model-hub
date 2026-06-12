@@ -3,24 +3,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from groq import Groq
-
-# We try to load dotenv safely for your local machine, but bypass it in Vercel production
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
 
 app = FastAPI(
     title="CoreLLM Model Hub",
     description="Multi-Model AI backend workspace running on Groq",
     version="1.0.0"
 )
-
-# Initialise Groq safely
-api_key = os.getenv("GROQ_API_KEY")
-client = Groq(api_key=api_key) if api_key else None
 
 class ChatMessage(BaseModel):
     message: str
@@ -31,15 +19,18 @@ def health_check():
 
 @app.post("/api/chat")
 async def chat_with_llm(user_input: ChatMessage):
-    global client
-    # Re-verify key checks at runtime if instance built cleanly without token
-    if not client:
-        api_key = os.getenv("GROQ_API_KEY")
-        if not api_key:
-            raise HTTPException(status_code=500, detail="GROQ_API_KEY variable is missing on Vercel.")
-        client = Groq(api_key=api_key)
+    # We import groq dynamically INSIDE the function to bypass Vercel's build-time module validation bug
+    try:
+        from groq import Groq
+    except ImportError:
+        raise HTTPException(status_code=500, detail="The 'groq' package is failing to load on the server container.")
+
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is missing on Vercel.")
 
     try:
+        client = Groq(api_key=api_key)
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
@@ -53,13 +44,10 @@ async def chat_with_llm(user_input: ChatMessage):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Safely mount static folder assets if visible inside server environment containers
+# Static assets serving
 if os.path.exists("public"):
-    # Mount the public directory cleanly
     app.mount("/public", StaticFiles(directory="public"), name="public")
 
 @app.get("/")
 async def read_index():
-    # A simple, bulletproof path rule for Vercel's main dashboard folder
     return FileResponse("public/index.html")
-
