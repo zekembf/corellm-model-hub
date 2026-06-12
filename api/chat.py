@@ -3,12 +3,14 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from groq import Groq
 
-app = FastAPI()
+# 🔄 Vercel strictly requires this variable name to be 'handler'
+handler = FastAPI()
 
 class ChatMessage(BaseModel):
     message: str
 
-@app.post("/api/chat")
+# 🔄 Update the decorator to use @handler instead of @app
+@handler.post("/api/chat")
 async def chat_with_llm(chat_data: ChatMessage):
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
@@ -24,7 +26,7 @@ async def chat_with_llm(chat_data: ChatMessage):
             ],
             temperature=0.7
         )
-        ai_response = completion.choices[0].message.content
+        ai_response = completion.choices.message.content
         return {"response": ai_response}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
